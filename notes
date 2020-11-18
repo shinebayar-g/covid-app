@@ -1,0 +1,4 @@
+1. docker-compose up -d mysql pma
+2. go to phpmyadmin, create new db called portal, grant permission on covidApp user to this DB
+3. docker-compose up -d key-submission key-retrieval
+4. docker-compose run portal bundle exec rake portal:bootstrap

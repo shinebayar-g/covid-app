@@ -1,0 +1,109 @@
+version: "2.1"
+
+services:
+  mysql:
+    image: mysql:5.7
+    container_name: mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: 8rCQGDRcKQvqHunkgcdPhu7Z7ywfa7qj
+      MYSQL_DATABASE: covidshield
+      MYSQL_USER: covidshield
+      MYSQL_PASSWORD: covidshield
+    networks:
+      - covidApp
+    volumes:
+        - ./mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "sh", "-c", "mysqladmin ping -u $$MYSQL_USER --password=$$MYSQL_PASSWORD"]
+      timeout: 20s
+      retries: 10
+
+  key-submission:
+    image: covidshield/key-submission:latest
+    container_name: key-submission
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: covidshield:covidshield@tcp(mysql:3306)/covidshield
+      KEY_CLAIM_TOKEN: "Lt6Ln7mVBLJRcvaY=428"
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks:
+      - covidApp
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  key-retrieval:
+    image: covidshield/key-retrieval:latest
+    container_name: key-retrieval
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: covidshield:covidshield@tcp(mysql:3306)/covidshield
+      ECDSA_KEY: 30770201010420b3f18a01b2851013192785b0cde257c196ae85a7bf4b6b06f3e843cb43297b3ba00a06082a8648ce3d030107a144034200048660f9877e486f8e84b192ca868576408c181763e7c7dc4f9925972a78fe191287147dd6af731d85ddb111326a9583ee7b2abb8aad6d6782edb6233e762e804b
+      RETRIEVE_HMAC_KEY: ad6f9fe54afc3aff7aa160b8b1124638ab166278959b69a2c6ae0d4c6e6d655b # yaj generate hiih ve? https://github.com/CovidShield/server/issues/58
+    ports:
+      - "127.0.0.1:8001:8001"
+    networks:
+      - covidApp
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  # Run ./bootstrap.sh before running `docker-compose up`
+  # docker-compose run portal bundle exec rake portal:bootstrap
+  portal:
+    image: covidshield/portal:latest
+    container_name: portal
+    restart: unless-stopped
+    entrypoint: /bin/sh
+    tty: true
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      RAILS_MASTER_KEY: db0bda6c389e83e57d30c0f1f5f09a6b # The encryption key used to decrypt your encrypted credentials file
+      RAILS_ENV: production
+      # RAILS_CREDENTIALS_PATH: /credentials.yml.enc
+      DATABASE_URL: "mysql2://portal:portal@mysql:3306/portal"
+      KEY_CLAIM_HOST: "key-submission:8000" # The host the COVID Shield server is running on
+      KEY_CLAIM_TOKEN: "test=302" # The token the COVID Shield server is configured to use
+      RAILS_SERVE_STATIC_FILES: 1
+      RAILS_LOG_TO_STDOUT: 1
+    volumes:
+        # - ./credentials.yml.enc:/app/config/credentials.yml.enc
+        - ./local_env.yml:/app/config/local_env.yml
+    networks:
+      - covidApp
+    depends_on:
+      mysql:
+        condition: service_healthy
+      key-retrieval:
+        condition: service_started
+      key-submission:
+        condition: service_started
+
+  pma:
+    image: phpmyadmin/phpmyadmin:5.0.4
+    container_name: pma
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:80"
+    environment:
+      PMA_HOSTS: mysql
+      PMA_PORTS: 3306
+      PMA_VERBOSES: mysql-server
+      # PMA_ABSOLUTE_URI: https://pma-covidApp.fantaam.app/
+      UPLOAD_LIMIT: 1G
+    networks:
+      - covidApp
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+networks:
+  covidApp:
+    driver: bridge

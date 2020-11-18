@@ -1,0 +1,5 @@
+KEY_CLAIM_TOKEN: test=302
+KEY_CLAIM_HOST: key-submission:8000
+DATABASE_HOST: mysql
+DATABASE_USER: portal
+DATABASE_PASSWORD: portal
